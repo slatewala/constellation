@@ -231,6 +231,50 @@ class _Painter extends CustomPainter {
       c.drawCircle(pos, lit ? 6 : 4,
           Paint()..color = lit ? const Color(0xFF6B4F00) : const Color(0xFF222244));
     }
+    // START / END / NEXT markers (always visible — guidance)
+    if (pattern.isNotEmpty) {
+      final startIdx = pattern.first;
+      final endIdx = pattern.last;
+      _drawMarker(c, _abs(startIdx, s), const Color(0xFF06D6A0), 'START');
+      _drawMarker(c, _abs(endIdx, s), const Color(0xFFFF6B6B), 'END');
+      // NEXT indicator only during connect phase
+      if (!showing && userOrder.length < pattern.length) {
+        final nextIdx = pattern[userOrder.length];
+        if (nextIdx != startIdx && nextIdx != endIdx) {
+          _drawMarker(c, _abs(nextIdx, s), const Color(0xFF42A5F5), 'NEXT');
+        } else {
+          // pulse the existing marker
+          c.drawCircle(_abs(nextIdx, s), 38,
+              Paint()
+                ..color = const Color(0xFF42A5F5).withOpacity(0.45)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 3);
+        }
+      }
+    }
+  }
+
+  void _drawMarker(Canvas c, Offset pos, Color color, String label) {
+    // outline ring
+    c.drawCircle(pos, 28,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3);
+    // label below
+    final tp = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(c, pos + Offset(-tp.width / 2, 32));
   }
 
   @override
