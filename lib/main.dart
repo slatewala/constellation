@@ -44,11 +44,17 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _generate() {
-    final n = 5 + _round;
-    _stars = List.generate(n, (_) =>
-      Offset(0.06 + _rng.nextDouble() * 0.88,
-             0.20 + _rng.nextDouble() * 0.60));
-    final patternLen = min(3 + _round, n);
+    // gentle curve:
+    //   round 1: 4 stars, pattern 2
+    //   round 2: 5 stars, pattern 3
+    //   round 3: 6 stars, pattern 3
+    //   round 4: 7 stars, pattern 4
+    //   round 5: 8 stars, pattern 4
+    //   round n>=6: stars 3+n, pattern 1 + (n+1)/2 (capped)
+    final n = 3 + _round;
+    final patternLen = min(1 + ((_round + 1) ~/ 2) + (_round > 6 ? _round - 6 : 0), n);
+    // spread stars on a gentle grid so they don't overlap
+    _stars = _spreadStars(n);
     final indices = List.generate(n, (i) => i)..shuffle(_rng);
     _pattern = indices.take(patternLen).toList();
     _userOrder = [];
@@ -56,9 +62,30 @@ class _GamePageState extends State<GamePage> {
     _gameOver = false;
   }
 
+  List<Offset> _spreadStars(int n) {
+    // jittered grid: pick cells from a 4xN grid, then jitter
+    final cols = 4;
+    final rows = (n / cols).ceil() + 1;
+    final cells = <Offset>[];
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final cx = (c + 0.5) / cols;
+        final cy = 0.18 + (r + 0.5) / rows * 0.65;
+        cells.add(Offset(cx, cy));
+      }
+    }
+    cells.shuffle(_rng);
+    return cells.take(n).map((p) => Offset(
+      (p.dx + (_rng.nextDouble() - 0.5) * 0.12).clamp(0.06, 0.94),
+      (p.dy + (_rng.nextDouble() - 0.5) * 0.08).clamp(0.18, 0.82),
+    )).toList();
+  }
+
   void _scheduleHide() {
     _hideTimer?.cancel();
-    final d = 1100 + _pattern.length * 280;
+    // generous early, tightens with rounds
+    final perItem = max(280, 480 - _round * 20);
+    final d = 1100 + _pattern.length * perItem;
     _hideTimer = Timer(Duration(milliseconds: d), () {
       if (!mounted) return;
       setState(() => _showing = false);
