@@ -25,7 +25,7 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage> {
   final _sfx = AudioPlayer();
   final _rng = Random();
-  // stars stored as normalized coords [0..1] x [0..1]
+  // normalized 0..1 coords
   List<Offset> _stars = [];
   List<int> _pattern = [];
   List<int> _userOrder = [];
@@ -38,39 +38,48 @@ class _GamePageState extends State<GamePage> {
   @override
   void initState() {
     super.initState();
-    _newRound();
+    _generate();
+    // schedule first reveal-end after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scheduleHide());
   }
 
-  void _newRound() {
-    _hideTimer?.cancel();
+  void _generate() {
     final n = 5 + _round;
-    // normalized: x in [0.05, 0.95], y in [0.18, 0.82]
     _stars = List.generate(n, (_) =>
-      Offset(0.05 + _rng.nextDouble() * 0.90,
-             0.18 + _rng.nextDouble() * 0.64));
+      Offset(0.06 + _rng.nextDouble() * 0.88,
+             0.20 + _rng.nextDouble() * 0.60));
     final patternLen = min(3 + _round, n);
     final indices = List.generate(n, (i) => i)..shuffle(_rng);
     _pattern = indices.take(patternLen).toList();
     _userOrder = [];
     _showing = true;
     _gameOver = false;
-    if (mounted) setState(() {});
-    _hideTimer = Timer(Duration(milliseconds: 1100 + patternLen * 280), () {
+  }
+
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    final d = 1100 + _pattern.length * 280;
+    _hideTimer = Timer(Duration(milliseconds: d), () {
       if (!mounted) return;
       setState(() => _showing = false);
     });
   }
 
+  void _newRound() {
+    setState(_generate);
+    _scheduleHide();
+  }
+
   void _tapStarAt(Offset localPos, Size area) {
     if (area.width == 0 || area.height == 0) return;
-    if (_showing) return;
     if (_gameOver) { _newRound(); return; }
+    if (_showing) return;
     int? hit;
     double bestDist = double.infinity;
     for (int i = 0; i < _stars.length; i++) {
       final pos = Offset(_stars[i].dx * area.width, _stars[i].dy * area.height);
       final d = (pos - localPos).distance;
-      if (d < 50 && d < bestDist) { hit = i; bestDist = d; }
+      if (d < 56 && d < bestDist) { hit = i; bestDist = d; }
     }
     if (hit == null) return;
     _sfx.play(AssetSource('sfx.wav'));
@@ -102,32 +111,35 @@ class _GamePageState extends State<GamePage> {
         child: LayoutBuilder(
           builder: (ctx, constraints) {
             final area = Size(constraints.maxWidth, constraints.maxHeight);
-            return Stack(children: [
-              Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerUp: (e) => _tapStarAt(e.localPosition, area),
-                child: CustomPaint(
-                  size: area,
-                  painter: _Painter(
-                    stars: _stars,
-                    pattern: _pattern,
-                    userOrder: _userOrder,
-                    showing: _showing,
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                // game canvas + tap layer
+                Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerUp: (e) => _tapStarAt(e.localPosition, area),
+                  child: CustomPaint(
+                    size: area,
+                    painter: _Painter(
+                      stars: _stars,
+                      pattern: _pattern,
+                      userOrder: _userOrder,
+                      showing: _showing,
+                    ),
                   ),
                 ),
-              ),
-              IgnorePointer(
-                child: Positioned.fill(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 20),
+                // HUD overlay (no pointer interception)
+                Positioned(
+                  top: 16, left: 0, right: 0,
+                  child: IgnorePointer(
                     child: Column(children: [
                       Text('ROUND $_round',
                           style: const TextStyle(color: Colors.white70, fontSize: 16)),
                       Text(_showing
                               ? 'MEMORIZE'
-                              : (_gameOver ? 'WRONG! TAP TO RETRY' : 'CONNECT'),
+                              : (_gameOver ? 'WRONG · TAP TO RETRY' : 'CONNECT'),
                           style: TextStyle(
-                              fontSize: 24,
+                              fontSize: 26,
                               fontWeight: FontWeight.bold,
                               color: _gameOver
                                   ? const Color(0xFFFF6B6B)
@@ -137,8 +149,8 @@ class _GamePageState extends State<GamePage> {
                     ]),
                   ),
                 ),
-              ),
-            ]);
+              ],
+            );
           },
         ),
       ),
@@ -153,22 +165,26 @@ class _Painter extends CustomPainter {
   _Painter({required this.stars, required this.pattern,
             required this.userOrder, required this.showing});
 
-  Offset _abs(int i, Size s) => Offset(stars[i].dx * s.width, stars[i].dy * s.height);
+  Offset _abs(int i, Size s) =>
+      Offset(stars[i].dx * s.width, stars[i].dy * s.height);
 
   @override
   void paint(Canvas c, Size s) {
-    // background dust
+    // background dust (always renders so screen is never blank)
     final dust = Paint()..color = Colors.white24;
     final r = Random(7);
-    for (int i = 0; i < 60; i++) {
-      c.drawCircle(Offset(r.nextDouble() * s.width, r.nextDouble() * s.height),
-          1.5 + r.nextDouble(), dust);
+    for (int i = 0; i < 70; i++) {
+      c.drawCircle(
+          Offset(r.nextDouble() * s.width, r.nextDouble() * s.height),
+          1.0 + r.nextDouble() * 1.5, dust);
     }
-    // pattern lines (only while showing) or user lines
+    if (stars.isEmpty) return;
+    // lines: showing pattern OR user-drawn
     final list = showing ? pattern : userOrder;
     final line = Paint()
-      ..color = const Color(0xFF42A5F5).withOpacity(showing ? 0.85 : 0.65)
-      ..strokeWidth = 3;
+      ..color = const Color(0xFF42A5F5).withOpacity(showing ? 0.9 : 0.65)
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
     for (int i = 1; i < list.length; i++) {
       c.drawLine(_abs(list[i-1], s), _abs(list[i], s), line);
     }
@@ -178,15 +194,15 @@ class _Painter extends CustomPainter {
       final inPattern = pattern.contains(i);
       final tapped = userOrder.contains(i);
       final lit = (showing && inPattern) || tapped;
+      // halo
       if (lit) {
-        c.drawCircle(pos, 26,
+        c.drawCircle(pos, 30,
             Paint()..color = const Color(0xFFFFD166).withOpacity(0.30));
       }
-      c.drawCircle(pos, lit ? 16 : 10,
+      c.drawCircle(pos, lit ? 18 : 12,
           Paint()..color = lit ? const Color(0xFFFFD166) : Colors.white);
-      // small black core to make them pop
-      c.drawCircle(pos, lit ? 4 : 3,
-          Paint()..color = lit ? const Color(0xFF6B4F00) : const Color(0xFF222222));
+      c.drawCircle(pos, lit ? 6 : 4,
+          Paint()..color = lit ? const Color(0xFF6B4F00) : const Color(0xFF222244));
     }
   }
 
