@@ -35,13 +35,16 @@ class _GamePageState extends State<GamePage> {
   Size _size = Size.zero;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _newRound());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_size == Size.zero) {
+      _size = MediaQuery.of(context).size;
+      if (_stars.isEmpty) _newRound();
+    }
   }
 
   void _newRound() {
-    final s = MediaQuery.of(context).size;
+    final s = _size == Size.zero ? MediaQuery.of(context).size : _size;
     _size = s;
     final n = 5 + _round; // total stars on screen
     _stars = List.generate(n, (_) =>
